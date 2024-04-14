@@ -1,0 +1,3 @@
+[submodule "extern/pyaes"]
+	path = extern/pyaes
+	url = https://github.com/boppreh/aes.git
