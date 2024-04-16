@@ -73,8 +73,41 @@ void shift_rows(unsigned char *block) {
   block[row_start] = temp;
 }
 
+// Helper function to multiply by 2 in GF(2^8)
+unsigned char mul_by_02(unsigned char value) {
+    return (value << 1) ^ (((value >> 7) & 1) * 0x1b);
+}
+
+// Helper function to multiply by 3 in GF(2^8)
+unsigned char mul_by_03(unsigned char value) {
+    return mul_by_02(value) ^ value;
+}
+
+// The MixColumns function performs the MixColumns step of the AES algorithm.
+// It treats each column of the state as a polynomial over GF(2^8) and multiplies
+// it modulo x^4 + 1 with a fixed polynomial c(x) = 03x^3 + 01x^2 + 01x + 02.
 void mix_columns(unsigned char *block) {
-  // TODO: Implement me!
+    unsigned char temp[16];
+
+    // Loop through each column (4 bytes per column)
+    for (int i = 0; i < 4; i++) {
+        int index = i * 4;
+        unsigned char s0 = block[index];    // Row 0 of current column
+        unsigned char s1 = block[index+1];  // Row 1 of current column
+        unsigned char s2 = block[index+2];  // Row 2 of current column
+        unsigned char s3 = block[index+3];  // Row 3 of current column
+
+        // Perform matrix multiplication and modulo operation by fixed polynomial
+        temp[index]   = mul_by_02(s0) ^ mul_by_03(s1) ^ s2 ^ s3;
+        temp[index+1] = s0 ^ mul_by_02(s1) ^ mul_by_03(s2) ^ s3;
+        temp[index+2] = s0 ^ s1 ^ mul_by_02(s2) ^ mul_by_03(s3);
+        temp[index+3] = mul_by_03(s0) ^ s1 ^ s2 ^ mul_by_02(s3);
+    }
+
+    // Copy the mixed columns back to the original state block
+    for (int i = 0; i < 16; i++) {
+        block[i] = temp[i];
+    }
 }
 
 /*
