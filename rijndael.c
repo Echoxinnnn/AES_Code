@@ -80,6 +80,7 @@ static const unsigned char Rcon[32] = {
  * Operations used when encrypting a block
  */
 
+
 void sub_bytes(unsigned char *block) {
   //This is non-linear substitution step, each byte of is replaced with another according to S-box.
   for (int i = 0; i < BLOCK_SIZE; i++) {
@@ -87,36 +88,54 @@ void sub_bytes(unsigned char *block) {
   }
 }
 
+// void shift_rows(unsigned char *block) {
+// //cyclically shifts the bytes in each row of the state
+//   //the first row is not shifted
+//   unsigned char temp;
+//   // Define the start index for each row 
+//   int row_start;
+//   // Second row, shift left by 1
+//   row_start = 1;  // Index of the start of the second row
+//   temp = block[row_start];
+//   for (int i = 0; i < 3; i++) {
+//     block[row_start + i] = block[row_start + i + 4];
+//   }
+//   block[row_start + 3] = temp;
+
+//   // Third row, shift left by 2
+//   row_start = 2;  // Index of the start of the third row
+//   temp = block[row_start];  // Save the first element
+//   unsigned char temp2 = block[row_start + 4];  // Save the second element
+//   for (int i = 0; i < 2; i++) {
+//       block[row_start + i] = block[row_start + i + 8];
+//   }
+//   block[row_start + 2] = temp;
+//   block[row_start + 6] = temp2;
+
+//   // Fourth row, shift left by 3 (it's shift right by 1 in the block)
+//   row_start = 3;  // Index of the start of the fourth row
+//   temp = block[row_start];  // Save the first element
+//   for (int i = 3; i > 0; i--) {
+//     block[row_start + i] = block[row_start + i - 1];
+//   }
+//   block[row_start] = temp;
+// }
+
 void shift_rows(unsigned char *block) {
-  //the first row is not shifted
-  unsigned char temp;
-  // Define the start index for each row 
-  int row_start;
-  // Second row, shift left by 1
-  row_start = 1;  // Index of the start of the second row
-  temp = block[row_start];
-  for (int i = 0; i < 3; i++) {
-    block[row_start + i] = block[row_start + i + 4];
-  }
-  block[row_start + 3] = temp;
-
-  // Third row, shift left by 2
-  row_start = 2;  // Index of the start of the third row
-  temp = block[row_start];  // Save the first element
-  unsigned char temp2 = block[row_start + 4];  // Save the second element
-  for (int i = 0; i < 2; i++) {
-      block[row_start + i] = block[row_start + i + 8];
-  }
-  block[row_start + 2] = temp;
-  block[row_start + 6] = temp2;
-
-  // Fourth row, shift left by 3 (it's shift right by 1 in the block)
-  row_start = 3;  // Index of the start of the fourth row
-  temp = block[row_start];  // Save the first element
-  for (int i = 3; i > 0; i--) {
-    block[row_start + i] = block[row_start + i - 1];
-  }
-  block[row_start] = temp;
+    unsigned char temp;
+    // Iterate over each row in the block
+    for (int row = 1; row < 4; ++row) {
+        // Calculate the start index of the current row
+        int row_start = row * 4;
+        // Perform cyclic shift for the current row's bytes
+        for (int i = 0; i < row; ++i) {
+            temp = block[row_start];
+            for (int j = 0; j < 3; ++j) {
+                block[row_start + j] = block[row_start + j + 1];
+            }
+            block[row_start + 3] = temp;
+        }
+    }
 }
 
 // Helper function to multiply by 2 in GF(2^8)
@@ -134,7 +153,7 @@ unsigned char mul_by_03(unsigned char value) {
 void mix_columns(unsigned char *block) {
     unsigned char temp[16];
 
-    // Loop through each column
+    // Loop column
     for (int i = 0; i < 4; i++) {
         int j = i * 4;
         unsigned char s0 = block[j];
@@ -219,7 +238,7 @@ void invert_mix_columns(unsigned char *block) {
  */
 
 void add_round_key(unsigned char *block, unsigned char *round_key) {
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < BLOCK_SIZE; i++) {
         block[i] ^= round_key[i];  // Perform XOR operation with the round key
     }
 }
@@ -231,11 +250,11 @@ void add_round_key(unsigned char *block, unsigned char *round_key) {
  * with round constants (Rcon).
  */
 void rotate_word(unsigned char *word) {
-    unsigned char t = word[0];
+    unsigned char tmp = word[0];
     word[0] = word[1];
     word[1] = word[2];
     word[2] = word[3];
-    word[3] = t;
+    word[3] = tmp;
 }
 
 void sub_word(unsigned char *word) {
@@ -244,19 +263,36 @@ void sub_word(unsigned char *word) {
     }
 }
 
-unsigned char *expand_key(unsigned char *cipher_key) {
-    static unsigned char expanded_keys[EXPANDED_KEY_SIZE];
-    memcpy(expanded_keys, cipher_key, BLOCK_SIZE);
+void key_schedule_core(unsigned char *word, int iteration) {
+    // Rotate the word
+    rotate_word(word);
+    // Substitute all the bytes in the word using the S-box
+    sub_word(word);
+    // XOR the first byte of the word with the Rcon value of current iteration
+    word[0] ^= Rcon[iteration];
+}
+
+unsigned char* expand_key(unsigned char* cipher_key) {
+    unsigned char* expanded_keys = malloc(EXPANDED_KEY_SIZE);
+    if (!expanded_keys) {
+        fprintf(stderr, "Memory allocation failed for expanded_keys.\n");
+        return NULL;
+    }
 
     int bytes_generated = BLOCK_SIZE;
+    int rcon_iteration = 0;
+    unsigned char temp[4];
+
+    // Copy the original key to the beginning of expanded_keys
+    memcpy(expanded_keys, cipher_key, BLOCK_SIZE);
+
     while (bytes_generated < EXPANDED_KEY_SIZE) {
-        unsigned char temp[4];
+        // Read the previously generated last word
         memcpy(temp, expanded_keys + bytes_generated - 4, 4);
 
+        // Apply the key schedule core once every block size
         if (bytes_generated % BLOCK_SIZE == 0) {
-            rotate_word(temp);
-            sub_word(temp);
-            temp[0] ^= Rcon[bytes_generated / BLOCK_SIZE];
+            key_schedule_core(temp, rcon_iteration++);
         }
 
         for (int i = 0; i < 4; i++) {
@@ -264,8 +300,10 @@ unsigned char *expand_key(unsigned char *cipher_key) {
             bytes_generated++;
         }
     }
+
     return expanded_keys;
 }
+
 
 /*
  * The implementations of the functions declared in the
@@ -273,14 +311,12 @@ unsigned char *expand_key(unsigned char *cipher_key) {
  */
 
 unsigned char *aes_encrypt_block(unsigned char *plaintext, unsigned char *key) {
-    // Allocate memory for the ciphertext
     unsigned char *ciphertext = malloc(BLOCK_SIZE);
     if (!ciphertext) {
         fprintf(stderr, "Memory allocation failed for ciphertext.\n");
         return NULL;
     }
 
-    // Expand the key
     unsigned char *expanded_key = expand_key(key);
     if (!expanded_key) {
         free(ciphertext);
@@ -288,64 +324,57 @@ unsigned char *aes_encrypt_block(unsigned char *plaintext, unsigned char *key) {
         return NULL;
     }
 
-    // Copy plaintext to ciphertext buffer for in-place encryption
     memcpy(ciphertext, plaintext, BLOCK_SIZE);
+    add_round_key(ciphertext, expanded_key);  // Initial round key addition
 
-    // Initial round key addition
-    add_round_key(ciphertext, expanded_key);
-
-    // Main rounds
     for (int round = 1; round < AES_ROUNDS; round++) {
-        sub_bytes(ciphertext); // SubBytes step
-        shift_rows(ciphertext); // ShiftRows step
-        mix_columns(ciphertext); // MixColumns step
-        add_round_key(ciphertext, expanded_key + round * BLOCK_SIZE); // AddRoundKey step
+        sub_bytes(ciphertext);
+        shift_rows(ciphertext);
+        mix_columns(ciphertext);
+        add_round_key(ciphertext, expanded_key + round * BLOCK_SIZE);
     }
 
-    // Final round (does not include MixColumns)
+    // Final round without MixColumns
     sub_bytes(ciphertext);
     shift_rows(ciphertext);
     add_round_key(ciphertext, expanded_key + AES_ROUNDS * BLOCK_SIZE);
 
-
+    free(expanded_key);  // Clean up expanded key
     return ciphertext;
 }
 
 unsigned char *aes_decrypt_block(unsigned char *ciphertext, unsigned char *key) {
-    // Allocate memory for the output buffer
-    unsigned char *output = malloc(BLOCK_SIZE);
-    if (!output) {
-        fprintf(stderr, "Memory allocation failed for output buffer.\n");
+    unsigned char *plaintext = malloc(BLOCK_SIZE);
+    if (!plaintext) {
+        fprintf(stderr, "Memory allocation failed for plaintext.\n");
         return NULL;
     }
 
-    // Expand the key
     unsigned char *expanded_key = expand_key(key);
     if (!expanded_key) {
-        free(output);
+        free(plaintext);
         fprintf(stderr, "Key expansion failed.\n");
         return NULL;
     }
 
-    // Copy ciphertext to output buffer for in-place decryption
-    memcpy(output, ciphertext, BLOCK_SIZE);
+    memcpy(plaintext, ciphertext, BLOCK_SIZE);
 
-    // Initial round key addition using the last round key
-    add_round_key(output, expanded_key + AES_ROUNDS * BLOCK_SIZE);
+    // Initial AddRoundKey (the last key slice used in the encryption process)
+    add_round_key(plaintext, expanded_key + AES_ROUNDS * BLOCK_SIZE);
 
     // Main decryption rounds
-    for (int round = AES_ROUNDS - 1; round > 0; round--) {
-        invert_shift_rows(output); // Inverse ShiftRows
-        invert_sub_bytes(output); // Inverse SubBytes
-        add_round_key(output, expanded_key + round * BLOCK_SIZE); // AddRoundKey
-        invert_mix_columns(output); // Inverse MixColumns
+    for (int round = AES_ROUNDS - 1; round >= 1; round--) {
+        invert_shift_rows(plaintext);
+        invert_sub_bytes(plaintext);
+        add_round_key(plaintext, expanded_key + round * BLOCK_SIZE);
+        invert_mix_columns(plaintext); // Perform MixColumns in all but the last round of decryption
     }
 
-    // Final round of decryption (does not include Inverse MixColumns)
-    invert_shift_rows(output);
-    invert_sub_bytes(output);
-    add_round_key(output, expanded_key); // AddRoundKey using the first expanded key
-    
+    // Last round of decryption (no InvertMixColumns)
+    invert_shift_rows(plaintext);
+    invert_sub_bytes(plaintext);
+    add_round_key(plaintext, expanded_key); // Use the initial encryption key
 
-    return output;
+    free(expanded_key); // Clean up expanded key
+    return plaintext;
 }
