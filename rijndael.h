@@ -10,6 +10,7 @@
 
 #define BLOCK_ACCESS(block, row, col) (block[(row * 4) + col])
 #define BLOCK_SIZE 16
+#define EXPANDED_KEY_SIZE 176
 #define AES_ROUNDS 10
 
 /*
