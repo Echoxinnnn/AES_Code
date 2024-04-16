@@ -197,7 +197,27 @@ unsigned char gmul(unsigned char a, unsigned char b) {
 }
 
 void invert_mix_columns(unsigned char *block) {
-  // TODO: Implement me!
+    unsigned char temp[16];
+
+    // Process each column
+    for (int i = 0; i < 4; i++) {
+        int j = i * 4;
+        unsigned char s0 = block[j];
+        unsigned char s1 = block[j+1];
+        unsigned char s2 = block[j+2];
+        unsigned char s3 = block[j+3];
+
+        // Perform the inverse mix column transformation
+        temp[j] = gmul(s0, 0x0e) ^ gmul(s1, 0x0b) ^ gmul(s2, 0x0d) ^ gmul(s3, 0x09);
+        temp[j+1] = gmul(s0, 0x09) ^ gmul(s1, 0x0e) ^ gmul(s2, 0x0b) ^ gmul(s3, 0x0d);
+        temp[j+2] = gmul(s0, 0x0d) ^ gmul(s1, 0x09) ^ gmul(s2, 0x0e) ^ gmul(s3, 0x0b);
+        temp[j+3] = gmul(s0, 0x0b) ^ gmul(s1, 0x0d) ^ gmul(s2, 0x09) ^ gmul(s3, 0x0e);
+    }
+
+    // Copy the result back to the original block
+    for (int i = 0; i < 16; i++) {
+        block[i] = temp[i];
+    }
 }
 
 /*
