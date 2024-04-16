@@ -271,78 +271,81 @@ unsigned char *expand_key(unsigned char *cipher_key) {
  * The implementations of the functions declared in the
  * header file should go here
  */
-unsigned char *aes_encrypt_block(unsigned char *plaintext, unsigned char *key) {
-    // Allocate memory for the output ciphertext
-    unsigned char *output = (unsigned char *)malloc(sizeof(unsigned char) * BLOCK_SIZE);
-    if (output == NULL) {
-        return NULL;  // Check memory allocation failure
-    }
 
-    // Expand the key first
-    unsigned char *expanded_key = expand_key(key);
-    if (expanded_key == NULL) {
-        free(output);  // Free output memory if key expansion fails
+unsigned char *aes_encrypt_block(unsigned char *plaintext, unsigned char *key) {
+    // Allocate memory for the ciphertext
+    unsigned char *ciphertext = malloc(BLOCK_SIZE);
+    if (!ciphertext) {
+        fprintf(stderr, "Memory allocation failed for ciphertext.\n");
         return NULL;
     }
 
-    // Copy plaintext to output for in-place encryption
-    memcpy(output, plaintext, BLOCK_SIZE);
+    // Expand the key
+    unsigned char *expanded_key = expand_key(key);
+    if (!expanded_key) {
+        free(ciphertext);
+        fprintf(stderr, "Key expansion failed.\n");
+        return NULL;
+    }
+
+    // Copy plaintext to ciphertext buffer for in-place encryption
+    memcpy(ciphertext, plaintext, BLOCK_SIZE);
 
     // Initial round key addition
-    add_round_key(output, expanded_key);
+    add_round_key(ciphertext, expanded_key);
 
     // Main rounds
     for (int round = 1; round < AES_ROUNDS; round++) {
-        sub_bytes(output);  // Non-linear substitution step
-        shift_rows(output);  // Permute bytes between rows/columns
-        mix_columns(output);  // Mixing within columns
-        add_round_key(output, expanded_key + round * BLOCK_SIZE);  // Add round key
+        sub_bytes(ciphertext); // SubBytes step
+        shift_rows(ciphertext); // ShiftRows step
+        mix_columns(ciphertext); // MixColumns step
+        add_round_key(ciphertext, expanded_key + round * BLOCK_SIZE); // AddRoundKey step
     }
 
-    // Final round (does not include mix_columns)
-    sub_bytes(output);
-    shift_rows(output);
-    add_round_key(output, expanded_key + AES_ROUNDS * BLOCK_SIZE);  // Add final round key
+    // Final round (does not include MixColumns)
+    sub_bytes(ciphertext);
+    shift_rows(ciphertext);
+    add_round_key(ciphertext, expanded_key + AES_ROUNDS * BLOCK_SIZE);
 
-    return output;  // Return the pointer to the encrypted data
+
+    return ciphertext;
 }
 
-
-unsigned char *aes_decrypt_block(unsigned char *ciphertext,
-                                 unsigned char *key) {
-  // TODO: Implement me!
-  unsigned char *output =
-      (unsigned char *)malloc(sizeof(unsigned char) * BLOCK_SIZE);
-   if (output == NULL) {
-        return NULL;  // Check memory allocation failure
-    }
-
-    // Expand the key first
-    unsigned char *expanded_key = expand_key(key);
-    if (expanded_key == NULL) {
-        free(output);  // Free output memory if key expansion fails
+unsigned char *aes_decrypt_block(unsigned char *ciphertext, unsigned char *key) {
+    // Allocate memory for the output buffer
+    unsigned char *output = malloc(BLOCK_SIZE);
+    if (!output) {
+        fprintf(stderr, "Memory allocation failed for output buffer.\n");
         return NULL;
     }
 
-    // Copy plaintext to output for in-place encryption
-    memcpy(output, ciphertext, BLOCK_SIZE);
-
-    // Initial round key addition for the last round key
-    add_round_key(output, expanded_key + AES_ROUNDS * BLOCK_SIZE);
-    invert_shift_rows(output);
-    invert_sub_bytes(output);
-
-    // Main rounds of decryption
-    for (int round = AES_ROUNDS - 1; round > 0; round--) {
-        add_round_key(output, expanded_key + AES_ROUNDS * BLOCK_SIZE);
-        invert_mix_columns(output);  // Inverse mix columns
-        invert_shift_rows(output);  // Inverse shift rows
-        invert_sub_bytes(output);  // Inverse sub bytes
+    // Expand the key
+    unsigned char *expanded_key = expand_key(key);
+    if (!expanded_key) {
+        free(output);
+        fprintf(stderr, "Key expansion failed.\n");
+        return NULL;
     }
 
-    // Final round of decryption (does not include invert_mix_columns)
-    add_round_key(output, expanded_key);
+    // Copy ciphertext to output buffer for in-place decryption
+    memcpy(output, ciphertext, BLOCK_SIZE);
 
-    // Return the pointer to the decrypted data
+    // Initial round key addition using the last round key
+    add_round_key(output, expanded_key + AES_ROUNDS * BLOCK_SIZE);
+
+    // Main decryption rounds
+    for (int round = AES_ROUNDS - 1; round > 0; round--) {
+        invert_shift_rows(output); // Inverse ShiftRows
+        invert_sub_bytes(output); // Inverse SubBytes
+        add_round_key(output, expanded_key + round * BLOCK_SIZE); // AddRoundKey
+        invert_mix_columns(output); // Inverse MixColumns
+    }
+
+    // Final round of decryption (does not include Inverse MixColumns)
+    invert_shift_rows(output);
+    invert_sub_bytes(output);
+    add_round_key(output, expanded_key); // AddRoundKey using the first expanded key
+    
+
     return output;
 }
