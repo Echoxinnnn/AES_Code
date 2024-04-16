@@ -49,6 +49,23 @@ static const unsigned char inv_s_box[256] = {
     0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
 };
 
+// Galois Field (GF(2^8)) multiplication function used in AES for MixColumns and Inverse MixColumns
+unsigned char gmul(unsigned char a, unsigned char b) {
+    unsigned char p = 0;
+    for (int i = 0; i < 8; i++) {
+        if (b & 1) {
+            p ^= a;
+        }
+        bool high_bit_set = a & 0x80;
+        a <<= 1;
+        if (high_bit_set) {
+            a ^= 0x1b;
+        }
+        b >>= 1;
+    }
+    return p;
+}
+
 
 /*
  * Operations used when encrypting a block
@@ -105,26 +122,25 @@ unsigned char mul_by_03(unsigned char value) {
 
 // The MixColumns function performs the MixColumns step of the AES algorithm.
 // It treats each column of the state as a polynomial over GF(2^8) and multiplies
-// it modulo x^4 + 1 with a fixed polynomial c(x) = 03x^3 + 01x^2 + 01x + 02.
 void mix_columns(unsigned char *block) {
     unsigned char temp[16];
 
-    // Loop through each column (4 bytes per column)
+    // Loop through each column
     for (int i = 0; i < 4; i++) {
-        int index = i * 4;
-        unsigned char s0 = block[index];    // Row 0 of current column
-        unsigned char s1 = block[index+1];  // Row 1 of current column
-        unsigned char s2 = block[index+2];  // Row 2 of current column
-        unsigned char s3 = block[index+3];  // Row 3 of current column
+        int j = i * 4;
+        unsigned char s0 = block[j];
+        unsigned char s1 = block[j+1];
+        unsigned char s2 = block[j+2];
+        unsigned char s3 = block[j+3];
 
-        // Perform matrix multiplication and modulo operation by fixed polynomial
-        temp[index]   = mul_by_02(s0) ^ mul_by_03(s1) ^ s2 ^ s3;
-        temp[index+1] = s0 ^ mul_by_02(s1) ^ mul_by_03(s2) ^ s3;
-        temp[index+2] = s0 ^ s1 ^ mul_by_02(s2) ^ mul_by_03(s3);
-        temp[index+3] = mul_by_03(s0) ^ s1 ^ s2 ^ mul_by_02(s3);
+        // Perform mix columns operation, multiply and then add (using XOR) results in GF(2^8)
+        temp[j] = gmul(s0, 0x02) ^ gmul(s1, 0x03) ^ s2 ^ s3;  // 2*s0 + 3*s1 + 1*s2 + 1*s3
+        temp[j+1] = s0 ^ gmul(s1, 0x02) ^ gmul(s2, 0x03) ^ s3;  // 1*s0 + 2*s1 + 3*s2 + 1*s3
+        temp[j+2] = s0 ^ s1 ^ gmul(s2, 0x02) ^ gmul(s3, 0x03);  // 1*s0 + 1*s1 + 2*s2 + 3*s3
+        temp[j+3] = gmul(s0, 0x03) ^ s1 ^ s2 ^ gmul(s3, 0x02);  // 3*s0 + 1*s1 + 1*s2 + 2*s3
     }
 
-    // Copy the mixed columns back to the original state block
+    // Copy mixed columns back to the original block
     for (int i = 0; i < 16; i++) {
         block[i] = temp[i];
     }
@@ -163,6 +179,21 @@ void invert_shift_rows(unsigned char *block) {
     block[7] = block[11];
     block[11] = block[15];
     block[15] = temp;
+}
+
+
+unsigned char gmul(unsigned char a, unsigned char b) {
+    unsigned char p = 0;  // product of the multiplication
+    unsigned char counter;
+    unsigned char hi_bit_set;
+    for (counter = 0; counter < 8; counter++) {
+        if (b & 1) p ^= a;
+        hi_bit_set = (a & 0x80);
+        a <<= 1;
+        if (hi_bit_set) a ^= 0x1b;  // modulo x^8 + x^4 + x^3 + x + 1
+        b >>= 1;
+    }
+    return p;
 }
 
 void invert_mix_columns(unsigned char *block) {
