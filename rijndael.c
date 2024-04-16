@@ -66,6 +66,12 @@ unsigned char gmul(unsigned char a, unsigned char b) {
     return p;
 }
 
+// Rcon array used in AES key expansion for AES-128 
+static const unsigned char Rcon[11] = {
+    0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36
+};
+
+
 
 /*
  * Operations used when encrypting a block
@@ -228,15 +234,58 @@ void add_round_key(unsigned char *block, unsigned char *round_key) {
    
 
 }
+void add_round_key(unsigned char *block, unsigned char *round_key) {
+    for (int i = 0; i < 16; i++) {
+        block[i] ^= round_key[i];  // Perform XOR operation with the round key
+    }
+}
 
 /*
- * This function should expand the round key. Given an input,
- * which is a single 128-bit key, it should return a 176-byte
- * vector, containing the 11 round keys one after the other
+ * This function expands a 128-bit cipher key into a 176-byte array that contains
+ * all round keys for the encryption process. The key expansion involves a series
+ * of operations including byte rotation, S-box substitution, and XOR operations
+ * with round constants (Rcon).
  */
+void rotate_word(unsigned char *word) {
+    unsigned char t = word[0];
+    word[0] = word[1];
+    word[1] = word[2];
+    word[2] = word[3];
+    word[3] = t;
+}
+
+void sub_word(unsigned char *word) {
+    for (int i = 0; i < 4; i++) {
+        word[i] = s_box[word[i]];
+    }
+}
+
 unsigned char *expand_key(unsigned char *cipher_key) {
-  // TODO: Implement me!
-  return 0;
+    static unsigned char expanded_keys[EXPANDED_KEY_SIZE];
+    memcpy(expanded_keys, cipher_key, BLOCK_SIZE);
+
+    static const unsigned char Rcon[11] = {
+        0x00,  // Rcon[0] is not used
+        0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36
+    };
+
+    int bytes_generated = BLOCK_SIZE;
+    while (bytes_generated < EXPANDED_KEY_SIZE) {
+        unsigned char temp[4];
+        memcpy(temp, expanded_keys + bytes_generated - 4, 4);
+
+        if (bytes_generated % BLOCK_SIZE == 0) {
+            rotate_word(temp);
+            sub_word(temp);
+            temp[0] ^= Rcon[bytes_generated / BLOCK_SIZE];
+        }
+
+        for (int i = 0; i < 4; i++) {
+            expanded_keys[bytes_generated] = expanded_keys[bytes_generated - BLOCK_SIZE] ^ temp[i];
+            bytes_generated++;
+        }
+    }
+    return expanded_keys;
 }
 
 /*
